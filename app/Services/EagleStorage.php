@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Exceptions\EagleWriteConflictException;
+use GuzzleHttp\Client as HttpClient;
+use GuzzleHttp\Promise\Utils;
+use JsonException;
 use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemOperator;
@@ -19,6 +22,9 @@ class EagleStorage
         private ?Client $webDavClient = null,
         private string $webDavRoot = '',
         private ?OpenCloudPathMapper $pathMapper = null,
+        private ?string $webDavUsername = null,
+        private ?string $webDavPassword = null,
+        private bool $verifyTls = true,
     ) {}
 
     public function fileExists(string $path): bool
@@ -162,6 +168,75 @@ class EagleStorage
     public function readJson(string $path): array
     {
         return json_decode($this->read($path), true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @param  array<int, string>  $paths
+     * @return array<string, array<string, mixed>|null>
+     */
+    public function readJsonBatch(array $paths): array
+    {
+        if (! $this->webDavClient || $this->webDavUsername === null || $this->webDavPassword === null) {
+            return collect($paths)->mapWithKeys(function (string $path): array {
+                if (! $this->fileExists($path)) {
+                    return [$path => null];
+                }
+
+                try {
+                    return [$path => $this->readJson($path)];
+                } catch (JsonException) {
+                    return [$path => null];
+                }
+            })->all();
+        }
+
+        $client = new HttpClient([
+            'auth' => [$this->webDavUsername, $this->webDavPassword],
+            'connect_timeout' => 15,
+            'http_errors' => false,
+            'timeout' => 60,
+            'verify' => $this->verifyTls,
+        ]);
+        $promises = [];
+
+        foreach ($paths as $path) {
+            $promises[$path] = $client->getAsync($this->remoteUrl($path));
+        }
+
+        $settled = Utils::settle($promises)->wait();
+        $documents = [];
+
+        foreach ($settled as $path => $result) {
+            if ($result['state'] !== 'fulfilled') {
+                throw new RuntimeException('OpenCloud could not read an asset metadata batch.');
+            }
+
+            $response = $result['value'];
+
+            if ($response->getStatusCode() === 404) {
+                $documents[$path] = null;
+
+                continue;
+            }
+
+            if ($response->getStatusCode() !== 200) {
+                throw new RuntimeException(
+                    "OpenCloud returned {$response->getStatusCode()} while reading asset metadata.",
+                );
+            }
+
+            try {
+                $documents[$path] = json_decode(
+                    (string) $response->getBody(),
+                    true,
+                    flags: JSON_THROW_ON_ERROR,
+                );
+            } catch (JsonException) {
+                $documents[$path] = null;
+            }
+        }
+
+        return $documents;
     }
 
     public function readJsonDocument(string $path): EagleJsonDocument

@@ -14,12 +14,19 @@ use RuntimeException;
 
 class EagleLibraryIndexer
 {
+    private const AssetBatchSize = 25;
+
     public function __construct(private EagleStorage $storage) {}
 
     /**
      * @param  callable(string): void|null  $report
      */
     public function syncPath(string $path, bool $prune = false, ?callable $report = null): EagleLibrary
+    {
+        return $this->syncLibrary($this->registerPath($path), $prune, $report);
+    }
+
+    public function registerPath(string $path): EagleLibrary
     {
         $libraryMetadata = $this->storage->readJson("{$path}/metadata.json");
         $library = EagleLibrary::query()->where('path', $path)->first();
@@ -35,14 +42,23 @@ class EagleLibraryIndexer
             'name' => pathinfo($path, PATHINFO_FILENAME),
             'application_version' => $libraryMetadata['applicationVersion'] ?? null,
             'modification_time' => $libraryMetadata['modificationTime'] ?? null,
+            'indexed_at' => null,
         ])->save();
 
-        $folderIds = DB::transaction(
+        DB::transaction(
             fn (): array => $this->syncFolders($library, $libraryMetadata),
             5,
         );
 
-        $this->syncAssets($library, $path, $folderIds, $prune, $report);
+        return $library->refresh();
+    }
+
+    /** @param callable(string): void|null $report */
+    public function syncLibrary(EagleLibrary $library, bool $prune = false, ?callable $report = null): EagleLibrary
+    {
+        $folderIds = $library->folders()->where('kind', 'folder')->pluck('id', 'eagle_id')->all();
+
+        $this->syncAssets($library, $library->path, $folderIds, $prune, $report);
         $library->forceFill(['indexed_at' => now()])->save();
 
         Cache::forget("eagle-library.{$library->id}.tags");
@@ -159,6 +175,9 @@ class EagleLibraryIndexer
         $existingModificationTimes = $library->assets()
             ->pluck('modification_time', 'eagle_id')
             ->all();
+        $existingFiles = $library->assets()
+            ->get(['eagle_id', 'extension', 'file_name', 'thumbnail_file_name'])
+            ->keyBy('eagle_id');
         $remoteModificationTimes = [];
 
         if ($this->storage->fileExists("{$path}/mtime.json")) {
@@ -169,48 +188,76 @@ class EagleLibraryIndexer
             }
         }
 
-        foreach ($this->storage->list("{$path}/images") as $directory) {
-            if (! $directory->isDir() || ! str_ends_with(basename($directory->path()), '.info')) {
-                continue;
-            }
+        $assetDirectories = $this->assetDirectories($path, $remoteModificationTimes);
+        $changedDirectories = [];
 
-            $eagleId = Str::beforeLast(basename($directory->path()), '.info');
-            $seen[] = $eagleId;
+        foreach ($assetDirectories as $eagleId => $itemDirectory) {
+            $seen[$eagleId] = true;
 
             if ($this->assetIsCurrent($eagleId, $existingModificationTimes, $remoteModificationTimes)) {
                 continue;
             }
 
-            try {
-                $record = $this->assetRecord($library, $directory->path());
-            } catch (JsonException $exception) {
-                $report && $report("Skipped {$eagleId}: {$exception->getMessage()}");
+            $changedDirectories[$eagleId] = $itemDirectory;
+        }
 
-                continue;
+        foreach (array_chunk($changedDirectories, self::AssetBatchSize, true) as $directoryBatch) {
+            $metadataPaths = collect($directoryBatch)
+                ->map(fn (string $itemDirectory): string => "{$itemDirectory}/metadata.json")
+                ->values()
+                ->all();
+            $metadataDocuments = $this->storage->readJsonBatch($metadataPaths);
+
+            foreach ($directoryBatch as $eagleId => $itemDirectory) {
+                $metadata = $metadataDocuments["{$itemDirectory}/metadata.json"] ?? null;
+
+                if (! $metadata) {
+                    $report && $report("Skipped {$eagleId}: metadata is missing or invalid.");
+
+                    continue;
+                }
+
+                $existingFile = $existingFiles->get($eagleId);
+                $record = $this->assetRecordFromMetadata(
+                    $library,
+                    $metadata,
+                    $existingFile?->extension === strtolower((string) ($metadata['ext'] ?? ''))
+                        ? $existingFile?->file_name
+                        : null,
+                    $existingFile?->thumbnail_file_name,
+                );
+
+                if (! $record) {
+                    try {
+                        $record = $this->assetRecord($library, $itemDirectory);
+                    } catch (JsonException $exception) {
+                        $report && $report("Skipped {$eagleId}: {$exception->getMessage()}");
+
+                        continue;
+                    }
+                }
+
+                if (! $record) {
+                    $report && $report("Skipped {$eagleId}: original file or metadata is missing.");
+
+                    continue;
+                }
+
+                $assetFolderEagleIds[$eagleId] = $record['folder_eagle_ids'];
+                unset($record['folder_eagle_ids']);
+                $records[] = $record;
+                $refreshed++;
             }
 
-            if (! $record) {
-                $report && $report("Skipped {$eagleId}: original file or metadata is missing.");
-
-                continue;
-            }
-
-            $assetFolderEagleIds[$eagleId] = $record['folder_eagle_ids'];
-            unset($record['folder_eagle_ids']);
-            $records[] = $record;
-            $refreshed++;
-
-            if (count($records) >= 500) {
-                $this->upsertAssets($records);
-                $records = [];
-                $report && $report("Refreshed {$refreshed} changed assets…");
-            }
+            $this->upsertAssets($records);
+            $records = [];
+            $report && $report("Refreshed {$refreshed} changed assets…");
         }
 
         $this->upsertAssets($records);
 
         if ($prune) {
-            foreach (array_chunk(array_values(array_diff(array_keys($existingModificationTimes), $seen)), 500) as $missingIds) {
+            foreach (array_chunk(array_values(array_diff(array_keys($existingModificationTimes), array_keys($seen))), 500) as $missingIds) {
                 $library->assets()->whereIn('eagle_id', $missingIds)->delete();
             }
         }
@@ -254,6 +301,32 @@ class EagleLibraryIndexer
     }
 
     /**
+     * @param  array<string, int|string|null>  $remoteModificationTimes
+     * @return array<string, string>
+     */
+    private function assetDirectories(string $path, array $remoteModificationTimes): array
+    {
+        if ($remoteModificationTimes !== []) {
+            return collect(array_keys($remoteModificationTimes))
+                ->filter(fn ($eagleId): bool => is_string($eagleId) && basename($eagleId) === $eagleId)
+                ->mapWithKeys(fn (string $eagleId): array => [
+                    $eagleId => "{$path}/images/{$eagleId}.info",
+                ])
+                ->all();
+        }
+
+        return collect($this->storage->list("{$path}/images"))
+            ->filter(fn ($directory): bool => $directory->isDir()
+                && str_ends_with(basename($directory->path()), '.info'))
+            ->mapWithKeys(function ($directory): array {
+                $eagleId = Str::beforeLast(basename($directory->path()), '.info');
+
+                return [$eagleId => $directory->path()];
+            })
+            ->all();
+    }
+
+    /**
      * @param  array<string, int|string|null>  $existingModificationTimes
      * @param  array<string, int|string|null>  $remoteModificationTimes
      */
@@ -290,20 +363,20 @@ class EagleLibraryIndexer
     private function assetRecord(EagleLibrary $library, string $itemDirectory): ?array
     {
         $metadataPath = "{$itemDirectory}/metadata.json";
-
-        if (! $this->storage->fileExists($metadataPath)) {
-            return null;
-        }
-
-        $metadata = $this->storage->readJson($metadataPath);
-        $eagleId = $metadata['id'] ?? Str::beforeLast(basename($itemDirectory), '.info');
         $fileNames = [];
+        $metadataExists = false;
         $thumbnailFileName = null;
 
         foreach ($this->storage->list($itemDirectory) as $file) {
             $fileName = basename($file->path());
 
-            if (! $file instanceof FileAttributes || $fileName === 'metadata.json') {
+            if (! $file instanceof FileAttributes) {
+                continue;
+            }
+
+            if ($fileName === 'metadata.json') {
+                $metadataExists = true;
+
                 continue;
             }
 
@@ -316,15 +389,52 @@ class EagleLibraryIndexer
             $fileNames[] = $fileName;
         }
 
-        if ($fileNames === []) {
+        if (! $metadataExists || $fileNames === []) {
             return null;
         }
 
+        $metadata = $this->storage->readJson($metadataPath);
         $extension = strtolower((string) ($metadata['ext'] ?? pathinfo($fileNames[0], PATHINFO_EXTENSION)));
         $fileName = collect($fileNames)->first(
             fn (string $candidate): bool => strtolower(pathinfo($candidate, PATHINFO_EXTENSION)) === $extension,
             $fileNames[0],
         );
+
+        return $this->assetRecordFromMetadata($library, $metadata, $fileName, $thumbnailFileName);
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>|null
+     */
+    private function assetRecordFromMetadata(
+        EagleLibrary $library,
+        array $metadata,
+        ?string $fileName = null,
+        ?string $thumbnailFileName = null,
+    ): ?array {
+        $eagleId = (string) ($metadata['id'] ?? '');
+        $name = trim((string) ($metadata['name'] ?? ''));
+        $extension = strtolower((string) ($metadata['ext'] ?? ''));
+
+        if ($eagleId === '' || $name === '' || $extension === '') {
+            return null;
+        }
+
+        $fileName ??= str_ends_with(strtolower($name), ".{$extension}")
+            ? $name
+            : "{$name}.{$extension}";
+
+        if (basename($fileName) !== $fileName) {
+            return null;
+        }
+
+        if (($metadata['noThumbnail'] ?? false) === true) {
+            $thumbnailFileName = null;
+        } else {
+            $thumbnailFileName ??= "{$eagleId}_thumbnail.png";
+        }
+
         $now = now();
 
         return [

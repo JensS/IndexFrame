@@ -29,10 +29,20 @@ class AppServiceProvider extends ServiceProvider
 
             $client = $this->webDavClient();
             $root = trim((string) config('eagle.webdav.root'), '/');
+            $username = (string) config('eagle.webdav.username');
+            $password = $this->webDavPassword();
             $adapter = new WebDAVAdapter($client, $root, manualCopy: true, manualMove: false);
             $pathMapper = new OpenCloudPathMapper((string) config('eagle.webdav.url'));
 
-            return new EagleStorage(new Filesystem($adapter), $client, $root, $pathMapper);
+            return new EagleStorage(
+                new Filesystem($adapter),
+                $client,
+                $root,
+                $pathMapper,
+                $username,
+                $password,
+                (bool) config('eagle.webdav.verify_tls'),
+            );
         });
 
         $this->app->singleton(OpenCloudDirectoryBrowser::class, function (): OpenCloudDirectoryBrowser {

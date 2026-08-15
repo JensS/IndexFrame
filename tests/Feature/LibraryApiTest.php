@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Exceptions\EagleWriteConflictException;
 use App\Models\EagleLibrary;
+use App\Services\EagleAssetLocator;
 use App\Services\EagleLibraryIndexer;
 use App\Services\EagleStorage;
 use App\Services\OpenCloudDirectoryBrowser;
@@ -138,6 +139,48 @@ class LibraryApiTest extends TestCase
 
         $this->assertSame($path, $library->path);
         $this->assertNotNull($library->indexed_at);
+    }
+
+    public function test_it_uses_the_complete_modification_manifest_instead_of_the_capped_directory_listing(): void
+    {
+        $path = 'Manifest Library.library';
+        $eagleId = 'ZYXWVUTSRQPON';
+        $itemDirectory = "{$path}/images/{$eagleId}.info";
+        $metadataPath = "{$itemDirectory}/metadata.json";
+        $storage = Mockery::mock(EagleStorage::class);
+        $storage->shouldReceive('readJson')
+            ->once()
+            ->with("{$path}/metadata.json")
+            ->andReturn(['folders' => [], 'smartFolders' => []]);
+        $storage->shouldReceive('fileExists')
+            ->once()
+            ->with("{$path}/mtime.json")
+            ->andReturnTrue();
+        $storage->shouldReceive('readJson')
+            ->once()
+            ->with("{$path}/mtime.json")
+            ->andReturn([$eagleId => 1720000000000]);
+        $storage->shouldReceive('readJsonBatch')
+            ->once()
+            ->with([$metadataPath])
+            ->andReturn([
+                $metadataPath => [
+                    'id' => $eagleId,
+                    'name' => 'Manifest asset',
+                    'ext' => 'jpg',
+                    'size' => 123,
+                    'lastModified' => 1720000000000,
+                    'folders' => [],
+                ],
+            ]);
+
+        $library = (new EagleLibraryIndexer($storage))->syncPath($path);
+
+        $this->assertSame(1, $library->assets()->count());
+        $this->assertDatabaseHas('eagle_assets', [
+            'eagle_id' => $eagleId,
+            'file_name' => 'Manifest asset.jpg',
+        ]);
     }
 
     public function test_it_exposes_the_complete_offline_manifest_and_smart_folder_rules(): void
@@ -325,6 +368,19 @@ class LibraryApiTest extends TestCase
             ->assertHeader('Content-Type', 'image/jpeg');
 
         $this->assertSame('image-contents', $response->streamedContent());
+    }
+
+    public function test_it_repairs_an_unusual_eagle_filename_when_the_asset_is_first_opened(): void
+    {
+        $library = EagleLibrary::query()->firstOrFail();
+        $asset = $library->assets()->firstOrFail();
+
+        $this->assertSame('Studio portrait.jpg', $asset->file_name);
+
+        $path = app(EagleAssetLocator::class)->original($asset);
+
+        $this->assertSame("{$this->remoteLibraryPath}/images/ABCDEFGHIJKLM.info/portrait.jpg", $path);
+        $this->assertSame('portrait.jpg', $asset->refresh()->file_name);
     }
 
     public function test_it_generates_a_private_webp_without_changing_the_eagle_source(): void

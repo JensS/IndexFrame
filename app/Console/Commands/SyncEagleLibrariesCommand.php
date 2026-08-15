@@ -45,10 +45,16 @@ class SyncEagleLibrariesCommand extends Command
             return $this->option('prune') ? self::SUCCESS : self::FAILURE;
         }
 
-        foreach ($paths as $path) {
+        $libraries = collect($paths)->mapWithKeys(function (string $path) use ($indexer): array {
+            $this->components->info("Registering {$path}");
+
+            return [$path => $indexer->registerPath($path)];
+        });
+
+        foreach ($libraries as $path => $library) {
             $this->components->info("Indexing {$path}");
-            $library = $indexer->syncPath(
-                $path,
+            $library = $indexer->syncLibrary(
+                $library,
                 (bool) $this->option('prune'),
                 fn (string $message) => $this->line("  {$message}"),
             );

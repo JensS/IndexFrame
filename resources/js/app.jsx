@@ -539,12 +539,14 @@ function App() {
         offlineLibraryIndexes.current.delete(slug);
     }, []);
 
-    const loadAssets = useCallback(async ({ append = false } = {}) => {
+    const loadAssets = useCallback(async ({ append = false, silent = false } = {}) => {
         if (! librarySlug) {
             return;
         }
 
-        append ? setLoadingMore(true) : setLoading(true);
+        if (! silent) {
+            append ? setLoadingMore(true) : setLoading(true);
+        }
 
         const parameters = new URLSearchParams({
             view: selection.view,
@@ -627,8 +629,10 @@ function App() {
         } catch (error) {
             flash(error.message, 'error');
         } finally {
-            setLoading(false);
-            setLoadingMore(false);
+            if (! silent) {
+                setLoading(false);
+                setLoadingMore(false);
+            }
         }
     }, [debouncedSearch, flash, librarySlug, loadOfflineLibraryIndex, navigation, online, page, selection, sort, type]);
 
@@ -678,6 +682,19 @@ function App() {
     useEffect(() => {
         loadAssets({ append: page > 1 });
     }, [loadAssets, page]);
+
+    useEffect(() => {
+        if (! online || ! activeLibrary || activeLibrary.indexed_at) {
+            return;
+        }
+
+        const interval = window.setInterval(() => {
+            loadLibraries();
+            loadAssets({ silent: true });
+        }, 5000);
+
+        return () => window.clearInterval(interval);
+    }, [activeLibrary?.indexed_at, activeLibrary?.slug, loadAssets, loadLibraries, online]);
 
     useEffect(() => {
         if (selectedAsset && window.innerWidth < 900) {
@@ -926,6 +943,7 @@ function App() {
                     onView={viewAsset}
                     canLoadMore={meta.current_page < meta.last_page}
                     loadingMore={loadingMore}
+                    indexing={! activeLibrary?.indexed_at}
                     selectedAssetId={selectedAssetId}
                 />
             </main>
@@ -1376,6 +1394,7 @@ function AssetGrid({
     gridSize,
     loading,
     loadingMore,
+    indexing,
     onLoadMore,
     onQuickLook,
     onSelect,
@@ -1393,9 +1412,13 @@ function AssetGrid({
     if (! assets.length) {
         return (
             <div className="empty-state">
-                <ImageIcon size={31} />
-                <h3>No assets found</h3>
-                <p>Try another folder, media type, or search phrase.</p>
+                {indexing ? <LoaderCircle className="spin" size={31} /> : <ImageIcon size={31} />}
+                <h3>{indexing ? 'Indexing this library…' : 'No assets found'}</h3>
+                <p>
+                    {indexing
+                        ? 'Assets will appear here as OpenCloud metadata is processed.'
+                        : 'Try another folder, media type, or search phrase.'}
+                </p>
             </div>
         );
     }
