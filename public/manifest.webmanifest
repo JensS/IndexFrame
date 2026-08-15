@@ -1,0 +1,23 @@
+{
+    "name": "Indexframe",
+    "short_name": "Indexframe",
+    "description": "Browse and manage private visual asset libraries.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#f1f0eb",
+    "theme_color": "#f4f3ef",
+    "icons": [
+        {
+            "src": "/icons/indexframe-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/indexframe-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

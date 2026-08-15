@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+project_directory=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+cd "$project_directory"
+
+compose() {
+    docker compose --env-file .env.opencloud -f compose.local.yaml "$@"
+}
+
+ensure_environment() {
+    if [ -f .env.opencloud ]; then
+        return
+    fi
+
+    admin_password=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
+    umask 077
+    printf 'OPENCLOUD_VERSION=7.4.0\nOPENCLOUD_ADMIN_PASSWORD=%s\n' "$admin_password" > .env.opencloud
+    echo 'Created .env.opencloud with a random local admin password.'
+}
+
+wait_until_ready() {
+    attempts=0
+
+    until curl --fail --insecure --silent --output /dev/null https://opencloud.localhost:9200/; do
+        attempts=$((attempts + 1))
+
+        if [ "$attempts" -ge 60 ]; then
+            echo 'OpenCloud did not become ready within 60 seconds.' >&2
+            compose logs --tail=100 opencloud >&2
+
+            return 1
+        fi
+
+        sleep 1
+    done
+}
+
+create_app_token() {
+    if [ -s .opencloud/webdav-token ]; then
+        return
+    fi
+
+    token_output=$(compose exec -T opencloud opencloud auth-app create --user-name=admin --expiration=8760h)
+    token=$(printf '%s\n' "$token_output" | sed -n 's/^ token: //p')
+
+    if [ -z "$token" ]; then
+        echo 'OpenCloud created a token, but its value could not be read from the CLI output.' >&2
+        printf '%s\n' "$token_output" >&2
+
+        return 1
+    fi
+
+    mkdir -p .opencloud
+    umask 077
+    printf '%s\n' "$token" > .opencloud/webdav-token
+    echo 'Created .opencloud/webdav-token for the Laravel WebDAV client.'
+}
+
+case "${1:-setup}" in
+    setup)
+        ensure_environment
+        mkdir -p .opencloud
+        compose up -d opencloud
+        wait_until_ready
+        create_app_token
+        php artisan config:clear
+        php artisan eagle:status
+        echo 'OpenCloud: https://opencloud.localhost:9200'
+        echo 'Username: admin'
+        ;;
+    up)
+        ensure_environment
+        compose up -d opencloud
+        ;;
+    down)
+        compose down
+        ;;
+    status)
+        compose ps
+        php artisan eagle:status
+        ;;
+    import)
+        if [ -z "${2:-}" ]; then
+            echo 'Usage: bin/opencloud import /path/to/Library.library [--replace]' >&2
+            exit 1
+        fi
+
+        if [ "${3:-}" = '--replace' ]; then
+            php artisan eagle:import "$2" --replace
+        elif [ -n "${3:-}" ]; then
+            echo 'The only supported import option is --replace.' >&2
+            exit 1
+        else
+            php artisan eagle:import "$2"
+        fi
+        ;;
+    sync)
+        php artisan eagle:sync --prune
+        ;;
+    logs)
+        compose logs --tail=200 -f opencloud
+        ;;
+    *)
+        echo 'Usage: bin/opencloud {setup|up|down|status|import|sync|logs}' >&2
+        exit 1
+        ;;
+esac

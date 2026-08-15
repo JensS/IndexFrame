@@ -1,0 +1,58 @@
+services:
+    app:
+        build: .
+        image: indexframe:${INDEXFRAME_IMAGE_TAG:-latest}
+        init: true
+        restart: unless-stopped
+        environment:
+            APP_NAME: Indexframe
+            APP_ENV: production
+            APP_DEBUG: "false"
+            APP_URL: ${APP_URL:?Set APP_URL in Dokploy}
+            APP_KEY: ${APP_KEY:?Set APP_KEY in Dokploy}
+            LOG_CHANNEL: stderr
+            LOG_LEVEL: ${LOG_LEVEL:-warning}
+            EAGLE_PASSWORD_HASH: ${EAGLE_PASSWORD_HASH:?Set EAGLE_PASSWORD_HASH in Dokploy}
+            EAGLE_WRITES_ENABLED: ${EAGLE_WRITES_ENABLED:-false}
+            EAGLE_WRITE_BACKUPS_ENABLED: ${EAGLE_WRITE_BACKUPS_ENABLED:-true}
+            EAGLE_WRITE_BACKUPS_KEEP_PER_ASSET: ${EAGLE_WRITE_BACKUPS_KEEP_PER_ASSET:-25}
+            EAGLE_UPLOAD_MAX_KILOBYTES: ${EAGLE_UPLOAD_MAX_KILOBYTES:-512000}
+            EAGLE_DERIVATIVE_WEBP_QUALITY: ${EAGLE_DERIVATIVE_WEBP_QUALITY:-78}
+            EAGLE_DERIVATIVE_TIMEOUT: ${EAGLE_DERIVATIVE_TIMEOUT:-90}
+            EAGLE_DERIVATIVE_GD_MAXIMUM_PIXELS: ${EAGLE_DERIVATIVE_GD_MAXIMUM_PIXELS:-80000000}
+            EAGLE_WEBDAV_URL: ${OPENCLOUD_WEBDAV_URL:?Set OPENCLOUD_WEBDAV_URL in Dokploy}
+            EAGLE_WEBDAV_USERNAME: ${OPENCLOUD_WEBDAV_USERNAME:?Set OPENCLOUD_WEBDAV_USERNAME in Dokploy}
+            EAGLE_WEBDAV_PASSWORD_FILE: /run/secrets/opencloud_webdav_token
+            EAGLE_WEBDAV_ROOT: ${OPENCLOUD_WEBDAV_ROOT:-/}
+            EAGLE_WEBDAV_VERIFY_TLS: ${OPENCLOUD_WEBDAV_VERIFY_TLS:-true}
+            EAGLE_SYNC_ON_START: ${EAGLE_SYNC_ON_START:-true}
+            EAGLE_SCHEDULER_ENABLED: ${EAGLE_SCHEDULER_ENABLED:-true}
+            DB_CONNECTION: sqlite
+            DB_DATABASE: /var/www/html/storage/app/database/database.sqlite
+            DB_BUSY_TIMEOUT: "5000"
+            DB_JOURNAL_MODE: WAL
+            DB_SYNCHRONOUS: NORMAL
+            SESSION_DRIVER: database
+            SESSION_ENCRYPT: "true"
+            SESSION_SECURE_COOKIE: "true"
+            SESSION_SAME_SITE: lax
+            CACHE_STORE: database
+        secrets:
+            - opencloud_webdav_token
+        volumes:
+            - indexframe_storage:/var/www/html/storage
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/up"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 40s
+        security_opt:
+            - no-new-privileges:true
+
+volumes:
+    indexframe_storage:
+
+secrets:
+    opencloud_webdav_token:
+        environment: OPENCLOUD_WEBDAV_TOKEN

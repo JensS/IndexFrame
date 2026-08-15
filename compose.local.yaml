@@ -1,0 +1,26 @@
+name: indexframe-opencloud
+
+services:
+    opencloud:
+        image: opencloudeu/opencloud-rolling:${OPENCLOUD_VERSION:-7.4.0}
+        restart: unless-stopped
+        user: "1000:1000"
+        entrypoint:
+            - /bin/sh
+        command:
+            - -c
+            - opencloud init || true; opencloud server
+        environment:
+            OC_URL: https://opencloud.localhost:9200
+            OC_INSECURE: "true"
+            PROXY_HTTP_ADDR: 0.0.0.0:9200
+            IDM_ADMIN_PASSWORD: ${OPENCLOUD_ADMIN_PASSWORD:?Set OPENCLOUD_ADMIN_PASSWORD in .env.opencloud}
+        ports:
+            - 127.0.0.1:9200:9200
+        volumes:
+            - opencloud_config:/etc/opencloud
+            - opencloud_data:/var/lib/opencloud
+
+volumes:
+    opencloud_config:
+    opencloud_data:

@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+    push:
+    pull_request:
+
+permissions:
+    contents: read
+
+jobs:
+    application:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Set up PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.4'
+                  coverage: none
+                  extensions: curl, gd, pdo_sqlite, sqlite3
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+                  cache: npm
+
+            - name: Install PHP dependencies
+              run: composer install --no-interaction --no-progress --prefer-dist
+
+            - name: Install JavaScript dependencies
+              run: npm ci
+
+            - name: Check PHP formatting
+              run: ./vendor/bin/pint --test
+
+            - name: Run tests
+              run: php artisan test
+
+            - name: Build frontend
+              run: npm run build
+
+            - name: Audit PHP dependencies
+              run: composer audit --locked
+
+            - name: Audit JavaScript dependencies
+              run: npm audit --omit=dev
+
+    container:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Build production image
+              run: docker build --tag indexframe:test .
