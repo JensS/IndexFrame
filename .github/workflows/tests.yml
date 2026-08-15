@@ -14,7 +14,7 @@ jobs:
 
         steps:
             - name: Check out repository
-              uses: actions/checkout@v5
+              uses: actions/checkout@v7
 
             - name: Set up PHP
               uses: shivammathur/setup-php@v2
@@ -56,7 +56,7 @@ jobs:
 
         steps:
             - name: Check out repository
-              uses: actions/checkout@v5
+              uses: actions/checkout@v7
 
             - name: Build production image
               run: docker build --tag indexframe:test .
