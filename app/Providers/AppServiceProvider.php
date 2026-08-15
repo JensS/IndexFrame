@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\EagleStorage;
 use App\Services\OpenCloudDirectoryBrowser;
+use App\Services\OpenCloudPathMapper;
 use Illuminate\Support\ServiceProvider;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
@@ -29,8 +30,9 @@ class AppServiceProvider extends ServiceProvider
             $client = $this->webDavClient();
             $root = trim((string) config('eagle.webdav.root'), '/');
             $adapter = new WebDAVAdapter($client, $root, manualCopy: true, manualMove: false);
+            $pathMapper = new OpenCloudPathMapper((string) config('eagle.webdav.url'));
 
-            return new EagleStorage(new Filesystem($adapter), $client, $root);
+            return new EagleStorage(new Filesystem($adapter), $client, $root, $pathMapper);
         });
 
         $this->app->singleton(OpenCloudDirectoryBrowser::class, function (): OpenCloudDirectoryBrowser {
@@ -42,10 +44,12 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $adapter = new WebDAVAdapter($this->webDavClient(), '', manualCopy: true, manualMove: false);
+            $pathMapper = new OpenCloudPathMapper((string) config('eagle.webdav.url'));
 
             return new OpenCloudDirectoryBrowser(
                 new Filesystem($adapter),
                 (string) config('eagle.webdav.root', '/'),
+                $pathMapper,
             );
         });
     }

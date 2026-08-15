@@ -10,6 +10,7 @@ class OpenCloudDirectoryBrowser
     public function __construct(
         private FilesystemOperator $filesystem,
         private string $configuredRoot = '',
+        private ?OpenCloudPathMapper $pathMapper = null,
     ) {}
 
     /**
@@ -31,7 +32,9 @@ class OpenCloudDirectoryBrowser
         $directories = collect($this->filesystem->listContents($filesystemPath, false))
             ->filter(fn ($entry): bool => $entry->isDir())
             ->map(function ($entry): array {
-                $entryPath = $this->normalize($entry->path());
+                $entryPath = $this->normalize(
+                    $this->pathMapper?->relative($entry->path()) ?? $entry->path(),
+                );
 
                 return [
                     'name' => basename($entryPath),

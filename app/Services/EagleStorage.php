@@ -18,6 +18,7 @@ class EagleStorage
         private FilesystemOperator $filesystem,
         private ?Client $webDavClient = null,
         private string $webDavRoot = '',
+        private ?OpenCloudPathMapper $pathMapper = null,
     ) {}
 
     public function fileExists(string $path): bool
@@ -135,7 +136,7 @@ class EagleStorage
     {
         $entries = iterator_to_array($this->filesystem->listContents($path, false), false);
 
-        if ($this->webDavClient && $this->webDavRoot !== '') {
+        if ($this->pathMapper) {
             $entries = array_map(
                 fn (StorageAttributes $entry): StorageAttributes => $this->logicalAttribute($entry),
                 $entries,
@@ -324,14 +325,6 @@ class EagleStorage
 
     private function logicalAttribute(StorageAttributes $entry): StorageAttributes
     {
-        $path = '/'.ltrim($entry->path(), '/');
-        $marker = '/'.trim($this->webDavRoot, '/').'/';
-        $position = strpos($path, $marker);
-
-        if ($position === false) {
-            return $entry;
-        }
-
-        return $entry->withPath(substr($path, $position + strlen($marker)));
+        return $entry->withPath($this->pathMapper->relative($entry->path(), $this->webDavRoot));
     }
 }
