@@ -9,7 +9,9 @@ use App\Services\EagleStorage;
 use App\Services\OpenCloudDirectoryBrowser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Mockery;
 use Tests\TestCase;
 
 class LibraryApiTest extends TestCase
@@ -105,6 +107,37 @@ class LibraryApiTest extends TestCase
         $this->getJson("/api/libraries/{$library->slug}/assets?smart=SMART00000001")
             ->assertOk()
             ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_remote_library_scanning_runs_outside_a_database_transaction(): void
+    {
+        $path = 'Lock Safe.library';
+        $transactionLevel = DB::transactionLevel();
+        $storage = Mockery::mock(EagleStorage::class);
+        $storage->shouldReceive('readJson')
+            ->once()
+            ->with("{$path}/metadata.json")
+            ->andReturn([
+                'folders' => [],
+                'smartFolders' => [],
+            ]);
+        $storage->shouldReceive('fileExists')
+            ->once()
+            ->with("{$path}/mtime.json")
+            ->andReturnFalse();
+        $storage->shouldReceive('list')
+            ->once()
+            ->with("{$path}/images")
+            ->andReturnUsing(function () use ($transactionLevel): array {
+                $this->assertSame($transactionLevel, DB::transactionLevel());
+
+                return [];
+            });
+
+        $library = (new EagleLibraryIndexer($storage))->syncPath($path);
+
+        $this->assertSame($path, $library->path);
+        $this->assertNotNull($library->indexed_at);
     }
 
     public function test_it_exposes_the_complete_offline_manifest_and_smart_folder_rules(): void

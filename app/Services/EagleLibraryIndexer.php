@@ -37,12 +37,13 @@ class EagleLibraryIndexer
             'modification_time' => $libraryMetadata['modificationTime'] ?? null,
         ])->save();
 
-        DB::transaction(function () use ($library, $libraryMetadata, $path, $prune, $report): void {
-            $folderIds = $this->syncFolders($library, $libraryMetadata);
-            $this->syncAssets($library, $path, $folderIds, $prune, $report);
+        $folderIds = DB::transaction(
+            fn (): array => $this->syncFolders($library, $libraryMetadata),
+            5,
+        );
 
-            $library->forceFill(['indexed_at' => now()])->save();
-        });
+        $this->syncAssets($library, $path, $folderIds, $prune, $report);
+        $library->forceFill(['indexed_at' => now()])->save();
 
         Cache::forget("eagle-library.{$library->id}.tags");
 

@@ -30,8 +30,8 @@ The project is independent and community maintained. It is not affiliated with, 
 Browser  --HTTPS-->  Indexframe  --WebDAV-->  OpenCloud  -->  *.library
                          |
                          +--> SQLite search index
-                         +--> generated WebP renditions
-                         +--> sessions, locks, and metadata backups
+                         +--> generated WebP renditions and metadata backups
+                         +--> file-backed sessions and sync locks
 ```
 
 OpenCloud is the source of truth. The SQLite database is a rebuildable search index; original assets are streamed from WebDAV and never copied into the application volume. Generated renditions and pre-write metadata backups live only in Indexframe's persistent storage.
@@ -134,6 +134,8 @@ For Dokploy:
 7. Enable writes only after a complete audit and source-library backup.
 
 The container migrates its database on startup and runs an overlap-protected library sync every ten minutes by default. `/up` is the health-check endpoint.
+
+Encrypted browser sessions and sync locks use the persistent application volume rather than SQLite, so a large background index cannot lock users out of the web interface.
 
 ## Library write safety
 

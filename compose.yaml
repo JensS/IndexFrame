@@ -32,11 +32,11 @@ services:
             DB_BUSY_TIMEOUT: "5000"
             DB_JOURNAL_MODE: WAL
             DB_SYNCHRONOUS: NORMAL
-            SESSION_DRIVER: database
+            SESSION_DRIVER: file
             SESSION_ENCRYPT: "true"
             SESSION_SECURE_COOKIE: "true"
             SESSION_SAME_SITE: lax
-            CACHE_STORE: database
+            CACHE_STORE: file
         secrets:
             - opencloud_webdav_token
         volumes:
