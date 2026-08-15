@@ -6,6 +6,7 @@ use App\Exceptions\EagleWriteConflictException;
 use App\Models\EagleLibrary;
 use App\Services\EagleLibraryIndexer;
 use App\Services\EagleStorage;
+use App\Services\OpenCloudDirectoryBrowser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -33,6 +34,7 @@ class LibraryApiTest extends TestCase
         config()->set('eagle.derivatives.temporary_path', "{$this->testingRoot}/derivative-temp");
         config()->set('eagle.ffmpeg_path', "{$this->testingRoot}/missing-ffmpeg");
         app()->forgetInstance(EagleStorage::class);
+        app()->forgetInstance(OpenCloudDirectoryBrowser::class);
         File::makeDirectory("{$this->libraryPath}/images/ABCDEFGHIJKLM.info", 0775, true);
         file_put_contents("{$this->libraryPath}/metadata.json", json_encode([
             'folders' => [[
@@ -121,6 +123,47 @@ class LibraryApiTest extends TestCase
         $this->getJson("/api/libraries/{$library->slug}/folders")
             ->assertOk()
             ->assertJsonPath('data.smart_folders.0.conditions.0.rules.0.property', 'tags');
+    }
+
+    public function test_it_browses_opencloud_directories_and_identifies_libraries(): void
+    {
+        File::makeDirectory("{$this->testingRoot}/Nested", 0775, true);
+
+        $this->getJson('/api/opencloud/directories?path=/')
+            ->assertOk()
+            ->assertJsonPath('data.path', '/')
+            ->assertJsonPath('data.parent', null)
+            ->assertJsonPath('data.library_count', 1)
+            ->assertJsonFragment([
+                'name' => 'Test Library.library',
+                'path' => '/Test Library.library',
+                'is_library' => true,
+            ])
+            ->assertJsonFragment([
+                'name' => 'Nested',
+                'path' => '/Nested',
+                'is_library' => false,
+            ]);
+
+        $this->getJson('/api/opencloud/directories?path=/Nested')
+            ->assertOk()
+            ->assertJsonPath('data.path', '/Nested')
+            ->assertJsonPath('data.parent', '/');
+    }
+
+    public function test_the_opencloud_browser_rejects_parent_path_segments(): void
+    {
+        $this->getJson('/api/opencloud/directories?path=../private')
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Parent path segments are not allowed.');
+    }
+
+    public function test_the_opencloud_browser_requires_authentication(): void
+    {
+        $this->flushSession();
+
+        $this->getJson('/api/opencloud/directories?path=/')
+            ->assertUnauthorized();
     }
 
     public function test_it_updates_eagle_metadata_and_the_search_index(): void

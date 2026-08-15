@@ -170,6 +170,14 @@ async function api(path, options = {}) {
     return data;
 }
 
+async function copyText(text) {
+    if (! navigator.clipboard?.writeText) {
+        throw new Error('Text copying needs HTTPS and clipboard access.');
+    }
+
+    await navigator.clipboard.writeText(text);
+}
+
 function canvasToPngBlob(canvas) {
     return new Promise((resolve, reject) => {
         canvas.toBlob(blob => {
@@ -860,7 +868,7 @@ function App() {
     }, [navigation, selection]);
 
     if (! libraries.length && ! loading) {
-        return <EmptyLibraryState onRefresh={loadLibraries} />;
+        return <EmptyLibraryState online={online} onRefresh={loadLibraries} />;
     }
 
     return (
@@ -1972,17 +1980,175 @@ function DetailsPanel({ asset, folders, onClose, onDelete, onUpdate, online }) {
     );
 }
 
-function EmptyLibraryState({ onRefresh }) {
+function OpenCloudBrowser({ onClose }) {
+    const [directory, setDirectory] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [copied, setCopied] = useState(false);
+
+    const loadDirectory = useCallback(async path => {
+        setLoading(true);
+        setError(null);
+        setCopied(false);
+
+        try {
+            const parameters = new URLSearchParams({ path });
+            const response = await api(`/api/opencloud/directories?${parameters}`);
+            setDirectory(response.data);
+        } catch (exception) {
+            setError(exception.message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadDirectory('/');
+    }, [loadDirectory]);
+
+    useEffect(() => {
+        function handleKeyDown(event) {
+            if (event.key === 'Escape') {
+                onClose();
+            }
+        }
+
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    async function copyRoot() {
+        try {
+            await copyText(`OPENCLOUD_WEBDAV_ROOT=${directory.path}`);
+            setCopied(true);
+        } catch (exception) {
+            setError(exception.message);
+        }
+    }
+
+    return (
+        <div
+            className="storage-browser-backdrop"
+            role="dialog"
+            aria-label="Browse OpenCloud folders"
+            aria-modal="true"
+            onMouseDown={event => event.target === event.currentTarget && onClose()}
+        >
+            <section className="storage-browser">
+                <header className="storage-browser-header">
+                    <div>
+                        <p>WebDAV setup</p>
+                        <h2>Choose the library folder</h2>
+                    </div>
+                    <button onClick={onClose} aria-label="Close OpenCloud browser"><X size={20} /></button>
+                </header>
+
+                <div className="storage-browser-status">
+                    <span>Configured root</span>
+                    <code>{directory?.configured_root || 'Loading…'}</code>
+                </div>
+
+                <div className="storage-browser-path">
+                    <button
+                        disabled={loading || ! directory?.parent}
+                        onClick={() => loadDirectory(directory.parent)}
+                        aria-label="Open parent folder"
+                    >
+                        <ChevronLeft size={17} />
+                    </button>
+                    <FolderOpen size={17} />
+                    <code>{directory?.path || '/'}</code>
+                    {directory?.path === directory?.configured_root && <span>Configured</span>}
+                </div>
+
+                <div className="storage-browser-list">
+                    {loading && (
+                        <div className="storage-browser-message">
+                            <LoaderCircle className="spin" size={22} />
+                            <p>Reading OpenCloud…</p>
+                        </div>
+                    )}
+
+                    {! loading && error && (
+                        <div className="storage-browser-message error">
+                            <FileQuestion size={25} />
+                            <p>{error}</p>
+                            <button onClick={() => loadDirectory(directory?.path || '/')}>Try again</button>
+                        </div>
+                    )}
+
+                    {! loading && ! error && ! directory?.directories.length && (
+                        <div className="storage-browser-message">
+                            <Folder size={25} />
+                            <p>This folder has no subfolders.</p>
+                        </div>
+                    )}
+
+                    {! loading && ! error && directory?.directories.map(item => (
+                        item.is_library ? (
+                            <div className="storage-browser-entry library" key={item.path}>
+                                <LibraryBig size={18} />
+                                <span>{item.name}</span>
+                                <strong>Library</strong>
+                            </div>
+                        ) : (
+                            <button
+                                className="storage-browser-entry"
+                                key={item.path}
+                                onClick={() => loadDirectory(item.path)}
+                            >
+                                <Folder size={18} />
+                                <span>{item.name}</span>
+                                <ChevronRight size={16} />
+                            </button>
+                        )
+                    ))}
+                </div>
+
+                <footer className="storage-browser-footer">
+                    <div>
+                        {directory?.library_count > 0 ? (
+                            <p>
+                                Found {directory.library_count}
+                                {' '}{directory.library_count === 1 ? 'library' : 'libraries'} directly in this folder.
+                            </p>
+                        ) : (
+                            <p>Open folders until the `.library` directories are shown here.</p>
+                        )}
+                        {copied && <span>Copied. Paste it into Dokploy, redeploy, then run `eagle:sync --prune`.</span>}
+                    </div>
+                    <button disabled={! directory?.library_count || loading} onClick={copyRoot}>
+                        {copied ? <Check size={16} /> : <Copy size={16} />}
+                        {copied ? 'Root copied' : 'Copy root value'}
+                    </button>
+                </footer>
+            </section>
+        </div>
+    );
+}
+
+function EmptyLibraryState({ online, onRefresh }) {
+    const [browserOpen, setBrowserOpen] = useState(false);
+
     return (
         <div className="empty-library">
             <div className="brand-mark"><span></span><span></span><span></span></div>
             <p className="eyebrow">Indexframe</p>
             <h1>No libraries indexed yet.</h1>
             <p>
-                Import a <code>.library</code> into OpenCloud with
-                {' '}<code>bin/opencloud import /path/to/Library.library</code>.
+                Browse the configured OpenCloud Space to find the folder that directly contains your
+                {' '}<code>.library</code> directories, then update the WebDAV root and run a sync.
             </p>
-            <button onClick={onRefresh}><RefreshCw size={16} /> Check again</button>
+            <div className="empty-library-actions">
+                <button disabled={! online} onClick={() => setBrowserOpen(true)}>
+                    <FolderOpen size={16} /> Browse OpenCloud
+                </button>
+                <button className="secondary" onClick={onRefresh}>
+                    <RefreshCw size={16} /> Check again
+                </button>
+            </div>
+            {browserOpen && <OpenCloudBrowser onClose={() => setBrowserOpen(false)} />}
         </div>
     );
 }

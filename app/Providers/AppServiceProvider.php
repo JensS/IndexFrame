@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\EagleStorage;
+use App\Services\OpenCloudDirectoryBrowser;
 use Illuminate\Support\ServiceProvider;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
@@ -25,30 +26,27 @@ class AppServiceProvider extends ServiceProvider
                 return new EagleStorage($filesystem);
             }
 
-            $url = rtrim((string) config('eagle.webdav.url'), '/').'/';
-            $username = (string) config('eagle.webdav.username');
-            $password = $this->webDavPassword();
-
-            if ($url === '/' || $username === '' || $password === '') {
-                throw new RuntimeException('EAGLE_WEBDAV_URL, EAGLE_WEBDAV_USERNAME, and an App Token are required.');
-            }
-
-            $client = new Client([
-                'baseUri' => $url,
-                'userName' => $username,
-                'password' => $password,
-                'authType' => Client::AUTH_BASIC,
-            ]);
-
-            if (! config('eagle.webdav.verify_tls')) {
-                $client->addCurlSetting(CURLOPT_SSL_VERIFYHOST, 0);
-                $client->addCurlSetting(CURLOPT_SSL_VERIFYPEER, false);
-            }
-
+            $client = $this->webDavClient();
             $root = trim((string) config('eagle.webdav.root'), '/');
             $adapter = new WebDAVAdapter($client, $root, manualCopy: true, manualMove: false);
 
             return new EagleStorage(new Filesystem($adapter), $client, $root);
+        });
+
+        $this->app->singleton(OpenCloudDirectoryBrowser::class, function (): OpenCloudDirectoryBrowser {
+            if (app()->environment('testing')) {
+                $root = (string) config('eagle.testing_root', base_path());
+                $filesystem = new Filesystem(new LocalFilesystemAdapter($root));
+
+                return new OpenCloudDirectoryBrowser($filesystem, (string) config('eagle.webdav.root', '/'));
+            }
+
+            $adapter = new WebDAVAdapter($this->webDavClient(), '', manualCopy: true, manualMove: false);
+
+            return new OpenCloudDirectoryBrowser(
+                new Filesystem($adapter),
+                (string) config('eagle.webdav.root', '/'),
+            );
         });
     }
 
@@ -73,5 +71,30 @@ class AppServiceProvider extends ServiceProvider
         }
 
         return (string) config('eagle.webdav.password');
+    }
+
+    private function webDavClient(): Client
+    {
+        $url = rtrim((string) config('eagle.webdav.url'), '/').'/';
+        $username = (string) config('eagle.webdav.username');
+        $password = $this->webDavPassword();
+
+        if ($url === '/' || $username === '' || $password === '') {
+            throw new RuntimeException('EAGLE_WEBDAV_URL, EAGLE_WEBDAV_USERNAME, and an App Token are required.');
+        }
+
+        $client = new Client([
+            'baseUri' => $url,
+            'userName' => $username,
+            'password' => $password,
+            'authType' => Client::AUTH_BASIC,
+        ]);
+
+        if (! config('eagle.webdav.verify_tls')) {
+            $client->addCurlSetting(CURLOPT_SSL_VERIFYHOST, 0);
+            $client->addCurlSetting(CURLOPT_SSL_VERIFYPEER, false);
+        }
+
+        return $client;
     }
 }

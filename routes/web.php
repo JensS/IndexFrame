@@ -6,6 +6,7 @@ use App\Http\Controllers\LibraryAssetsController;
 use App\Http\Controllers\LibraryFoldersController;
 use App\Http\Controllers\LibraryOfflineAssetsController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\OpenCloudDirectoriesController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'create'])->name('login');
@@ -17,6 +18,9 @@ Route::middleware('eagle.auth')->group(function (): void {
 
     Route::prefix('api')->group(function (): void {
         Route::get('libraries', [LibrariesController::class, 'index'])->name('libraries.index');
+        Route::get('opencloud/directories', OpenCloudDirectoriesController::class)
+            ->middleware('throttle:60,1')
+            ->name('openCloud.directories');
         Route::get('libraries/{library}/folders', LibraryFoldersController::class)->name('libraries.folders');
         Route::get('libraries/{library}/assets', [LibraryAssetsController::class, 'index'])->name('libraries.assets.index');
         Route::get('libraries/{library}/offline-assets', LibraryOfflineAssetsController::class)->name('libraries.offlineAssets');
