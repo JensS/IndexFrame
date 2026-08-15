@@ -57,6 +57,8 @@ Create a dedicated App Token instead of using the account password. The configur
 
 Indexframe scans only the immediate children of `OPENCLOUD_WEBDAV_ROOT`. It detects directories that end in `.library` and contain both `metadata.json` and an `images` directory. Use `/` when the libraries are direct children of the Space; use a relative path such as `/Eagle Libraries` when they are inside a subfolder.
 
+If no libraries are indexed, choose **Browse OpenCloud** on the empty screen. The authenticated, read-only folder browser starts at the Space root, marks valid libraries, and copies the exact `OPENCLOUD_WEBDAV_ROOT` value for Dokploy. WebDAV credentials remain server-side and browser responses are never stored in the offline cache.
+
 ## Environment configuration
 
 These are all environment values accepted by the included [`compose.yaml`](compose.yaml). Copy [`deploy.env.example`](deploy.env.example) to an ignored file such as `.env.deploy`, replace the required placeholders, and keep the file out of version control.

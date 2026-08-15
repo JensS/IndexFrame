@@ -1,4 +1,4 @@
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL_CACHE = `indexframe-shell-${VERSION}`;
 const DATA_CACHE = `indexframe-data-${VERSION}`;
 const PREVIEW_CACHE = `indexframe-previews-${VERSION}`;
@@ -61,6 +61,12 @@ self.addEventListener('fetch', event => {
 
     if (request.mode === 'navigate') {
         event.respondWith(navigationResponse(request));
+
+        return;
+    }
+
+    if (url.pathname.startsWith('/api/opencloud/')) {
+        event.respondWith(fetch(request, { cache: 'no-store' }));
 
         return;
     }
@@ -226,11 +232,11 @@ async function cacheAppShell() {
 
     Object.values(manifest).forEach(entry => {
         if (entry.file) {
-            assets.add(`/${entry.file}`);
+            assets.add(`/build/${entry.file}`);
         }
 
-        (entry.css || []).forEach(file => assets.add(`/${file}`));
-        (entry.assets || []).forEach(file => assets.add(`/${file}`));
+        (entry.css || []).forEach(file => assets.add(`/build/${file}`));
+        (entry.assets || []).forEach(file => assets.add(`/build/${file}`));
     });
 
     await cache.addAll([...assets]);

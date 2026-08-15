@@ -17,9 +17,12 @@ class OpenCloudDirectoriesController extends Controller
         ]);
 
         try {
-            return response()->json([
+            $response = response()->json([
                 'data' => $browser->browse($validated['path'] ?? '/'),
             ]);
+            $response->headers->set('Cache-Control', 'no-store, private');
+
+            return $response;
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         } catch (Throwable $exception) {

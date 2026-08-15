@@ -131,6 +131,7 @@ class LibraryApiTest extends TestCase
 
         $this->getJson('/api/opencloud/directories?path=/')
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('data.path', '/')
             ->assertJsonPath('data.parent', null)
             ->assertJsonPath('data.library_count', 1)

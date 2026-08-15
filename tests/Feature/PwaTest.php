@@ -33,6 +33,9 @@ class PwaTest extends TestCase
         $this->assertStringContainsString('indexframe-offline-libraries-', $serviceWorker);
         $this->assertStringContainsString('CACHE_LIBRARY', $serviceWorker);
         $this->assertStringContainsString('CANCEL_LIBRARY_CACHE', $serviceWorker);
+        $this->assertStringContainsString("url.pathname.startsWith('/api/opencloud/')", $serviceWorker);
+        $this->assertStringContainsString("cache: 'no-store'", $serviceWorker);
+        $this->assertStringContainsString('assets.add(`/build/${entry.file}`)', $serviceWorker);
         $this->assertStringContainsString("shell.delete('/')", $serviceWorker);
     }
 }
