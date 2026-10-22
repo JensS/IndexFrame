@@ -16,7 +16,7 @@ RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --no-
 COPY . .
 RUN composer dump-autoload --no-dev --optimize --no-interaction
 
-FROM php:8.4-fpm-alpine3.22
+FROM php:8.4-fpm-alpine
 
 ARG GIT_HASH=""
 
