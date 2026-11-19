@@ -4,6 +4,8 @@ Indexframe is a private, self-hosted web interface for browsing visual asset lib
 
 OpenCloud is currently the only supported storage backend. Indexframe expects an existing OpenCloud instance and does not manage or replace it.
 
+For **netcup shared hosting (Apache/PHP 8.5, MySQL 8.4)**, follow the [netcup migration and local Docker simulation guide](docs/netcup.md). It includes a build archive with precompiled assets, database-backed sessions/cache/queues, resumable indexing, and every-minute cron setup. The Docker/Dokploy instructions below describe the existing VPS deployment.
+
 The project is independent and community maintained. It is not affiliated with, endorsed by, or sponsored by Eagle or OpenCloud, and it does not bundle their code, logos, or user content.
 
 > [!IMPORTANT]
@@ -43,7 +45,7 @@ OpenCloud is the source of truth. The SQLite database is a rebuildable search in
 - Docker with Compose, or a Dokploy Compose deployment
 - An HTTPS domain in production and for service-worker/offline features
 
-For source development, PHP 8.3+, Composer 2, Node.js 22+, FFmpeg, FFprobe, GD, PDO, cURL, and SQLite are also required.
+For source development with the checked-in dependencies, use PHP 8.4.1 or later, Composer 2, Node.js 22+, FFmpeg, FFprobe, GD, PDO, cURL, and SQLite. CI tests both PHP 8.4 and 8.5.
 
 ## Prepare OpenCloud
 
@@ -133,7 +135,7 @@ For Dokploy:
 6. Run `php artisan eagle:status` and `php artisan eagle:audit` in the app container.
 7. Enable writes only after a complete audit and source-library backup.
 
-The container migrates its database on startup and runs an overlap-protected library sync every ten minutes by default. `/up` is the health-check endpoint.
+The container runs PHP 8.5, migrates its database on startup, and runs an overlap-protected library sync every ten minutes by default. `/up` is the health-check endpoint.
 
 Encrypted browser sessions and sync locks use the persistent application volume rather than SQLite, so a large background index cannot lock users out of the web interface.
 

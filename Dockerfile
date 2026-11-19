@@ -16,7 +16,7 @@ RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --no-
 COPY . .
 RUN composer dump-autoload --no-dev --optimize --no-interaction
 
-FROM php:8.4-fpm-alpine
+FROM php:8.5-fpm-alpine3.24
 
 ARG GIT_HASH=""
 
@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.vendor="Indexframe contributors"
 RUN apk add --no-cache ca-certificates ffmpeg nginx su-exec freetype libcurl libjpeg-turbo libpng libwebp libpq sqlite-libs \
     && apk add --no-cache --virtual .build-dependencies $PHPIZE_DEPS freetype-dev libjpeg-turbo-dev libpng-dev libwebp-dev postgresql-dev sqlite-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install -j"$(nproc)" gd pdo_mysql pdo_pgsql pdo_sqlite opcache \
+    && docker-php-ext-install -j"$(nproc)" gd pdo_mysql pdo_pgsql pdo_sqlite \
     && apk del .build-dependencies
 
 WORKDIR /var/www/html
