@@ -194,7 +194,7 @@ class EagleStorage
             'auth' => [$this->webDavUsername, $this->webDavPassword],
             'connect_timeout' => 15,
             'http_errors' => false,
-            'timeout' => 60,
+            'timeout' => 20,
             'verify' => $this->verifyTls,
         ]);
         $promises = [];

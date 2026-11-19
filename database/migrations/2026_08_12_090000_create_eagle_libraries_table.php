@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('slug')->unique();
             $table->string('name');
-            $table->text('path')->unique();
+            $table->string('path', 768)->unique();
             $table->string('application_version')->nullable();
             $table->unsignedBigInteger('modification_time')->nullable();
             $table->timestamp('indexed_at')->nullable();

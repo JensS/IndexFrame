@@ -152,6 +152,8 @@ Smart folders are dynamic views based on filter conditions.
 
 A flat key-value map of item IDs to their last modification timestamps.
 
+Real libraries may also contain an `all` entry that does not identify an asset. Indexing excludes this entry rather than requesting `images/all.info/metadata.json`.
+
 ```json
 {
   "LYSRPTK227KY3": 1731324446713,

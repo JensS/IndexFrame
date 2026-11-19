@@ -51,7 +51,13 @@ class LibraryFoldersController extends Controller
             'trash' => $library->assets()->where('is_deleted', true)->count(),
         ];
 
-        $tags = Cache::remember("eagle-library.{$library->id}.tags", now()->addMinutes(10), function () use ($library) {
+        $cacheKey = "eagle-library.{$library->id}.tags";
+
+        if (Cache::has($cacheKey) && ! is_array(Cache::get($cacheKey))) {
+            Cache::forget($cacheKey);
+        }
+
+        $tags = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($library): array {
             return $library->assets()
                 ->visible()
                 ->pluck('tags')
@@ -61,7 +67,8 @@ class LibraryFoldersController extends Controller
                 ->sortDesc()
                 ->take(40)
                 ->map(fn (int $count, string $name): array => compact('name', 'count'))
-                ->values();
+                ->values()
+                ->all();
         });
 
         return response()->json([

@@ -4,8 +4,12 @@
 .env.*
 !.env.example
 !.env.opencloud.example
+!.env.netcup.example
+!.env.netcup.local.example
+/dist/
 /.opencloud/
 *.library/
+!tests/Fixtures/netcup-webdav/*.library/
 *.eaglepack
 .phpactor.json
 .phpunit.result.cache

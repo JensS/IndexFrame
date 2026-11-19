@@ -238,7 +238,7 @@ class EagleAssetWriter
             return $this->generateVideoThumbnail($source, $destination);
         }
 
-        if (! $this->isImage($extension) || filesize($source) > 50 * 1024 * 1024) {
+        if (! $this->isImage($extension) || ! EagleImageMemory::canDecode($source)) {
             return false;
         }
 

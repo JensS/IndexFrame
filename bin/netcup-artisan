@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$project_root"
+exec env PHPRC=/mybin/php-ini /usr/local/php84/bin/php artisan "$@"

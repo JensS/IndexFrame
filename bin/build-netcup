@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$project_root"
+mkdir -p dist
+archive="$project_root/dist/indexframe-netcup.tar.gz"
+temporary_archive=$(mktemp "$project_root/dist/.netcup-XXXXXX")
+trap 'rm -f "$temporary_archive"' EXIT INT TERM
+
+docker build --file docker/netcup/Dockerfile --target cli --tag indexframe-netcup:package .
+docker run --rm --entrypoint tar indexframe-netcup:package \
+    -czf - \
+    --exclude='bootstrap/cache/*.php' \
+    --exclude='database/*.sqlite*' \
+    --exclude='public/storage' \
+    --exclude='public/hot' \
+    artisan app bootstrap config database public resources routes storage vendor \
+    composer.json composer.lock .env.netcup.example bin/netcup-artisan bin/netcup-cron > "$temporary_archive"
+mv "$temporary_archive" "$archive"
+printf 'Deployment archive: %s\n' "$archive"

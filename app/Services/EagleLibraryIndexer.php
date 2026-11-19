@@ -95,6 +95,75 @@ class EagleLibraryIndexer
         return $asset->refresh()->load('folders');
     }
 
+    /** @return array{directories: array<int, string>, missing_asset_ids: array<int, int>} */
+    public function planSync(EagleLibrary $library, bool $prune): array
+    {
+        $remoteTimes = $this->storage->fileExists("{$library->path}/mtime.json")
+            ? $this->storage->readJson("{$library->path}/mtime.json")
+            : [];
+        $directories = $this->assetDirectories($library->path, $remoteTimes);
+        $existingTimes = $library->assets()->pluck('modification_time', 'eagle_id')->all();
+        $existingIds = $prune ? $library->assets()->pluck('id', 'eagle_id')->all() : [];
+
+        return [
+            'directories' => array_values(array_filter(
+                $directories,
+                fn (string $eagleId): bool => ! $this->assetIsCurrent($eagleId, $existingTimes, $remoteTimes),
+                ARRAY_FILTER_USE_KEY,
+            )),
+            'missing_asset_ids' => array_values(array_diff_key($existingIds, $directories)),
+        ];
+    }
+
+    /** @param array<int, string> $directories */
+    public function syncDirectoryBatch(EagleLibrary $library, array $directories): void
+    {
+        // Retained checkpoints from older versions can still contain this
+        // library-wide manifest entry, which is not an asset directory.
+        $directories = array_filter($directories, fn (string $directory): bool => basename($directory) !== 'all.info');
+
+        if ($directories === []) {
+            return;
+        }
+
+        $metadataPaths = array_map(fn (string $directory): string => "{$directory}/metadata.json", array_values($directories));
+        $documents = $this->storage->readJsonBatch($metadataPaths);
+        $records = [];
+        $folderAssignments = [];
+
+        foreach ($directories as $directory) {
+            $eagleId = Str::beforeLast(basename($directory), '.info');
+            $metadata = $documents["{$directory}/metadata.json"] ?? null;
+
+            if (! $metadata || ($metadata['id'] ?? null) !== $eagleId) {
+                throw new RuntimeException("Missing or invalid metadata for {$directory}; the sync checkpoint was retained.");
+            }
+
+            $record = $this->assetRecordFromMetadata($library, $metadata);
+
+            if (! $record) {
+                throw new RuntimeException("Unable to index {$directory}; the sync checkpoint was retained.");
+            }
+
+            $folderAssignments[$eagleId] = $record['folder_eagle_ids'];
+            unset($record['folder_eagle_ids']);
+            $records[] = $record;
+        }
+
+        DB::transaction(function () use ($library, $records, $folderAssignments): void {
+            $this->upsertAssets($records);
+            $folderIds = $library->folders()->where('kind', 'folder')->pluck('id', 'eagle_id');
+            $assets = $library->assets()->whereIn('eagle_id', array_keys($folderAssignments))->get();
+
+            foreach ($assets as $asset) {
+                $assignedIds = collect($folderAssignments[$asset->eagle_id])
+                    ->map(fn (string $eagleId): ?int => $folderIds[$eagleId] ?? null)
+                    ->filter()->values();
+                $asset->folders()->sync($assignedIds);
+            }
+        });
+    }
+
     /** @param array<string, mixed> $libraryMetadata */
     private function syncFolders(EagleLibrary $library, array $libraryMetadata): array
     {
@@ -308,7 +377,7 @@ class EagleLibraryIndexer
     {
         if ($remoteModificationTimes !== []) {
             return collect(array_keys($remoteModificationTimes))
-                ->filter(fn ($eagleId): bool => is_string($eagleId) && basename($eagleId) === $eagleId)
+                ->filter(fn ($eagleId): bool => is_string($eagleId) && $eagleId !== 'all' && basename($eagleId) === $eagleId)
                 ->mapWithKeys(fn (string $eagleId): array => [
                     $eagleId => "{$path}/images/{$eagleId}.info",
                 ])
@@ -446,7 +515,7 @@ class EagleLibraryIndexer
             'extension' => $extension,
             'media_type' => $this->mediaType($extension),
             'mime_type' => $this->mimeType($extension),
-            'size' => $metadata['size'] ?? $this->storage->fileSize("{$itemDirectory}/{$fileName}"),
+            'size' => $metadata['size'] ?? $this->storage->fileSize("{$library->path}/images/{$eagleId}.info/{$fileName}"),
             'width' => $metadata['width'] ?? $metadata['resolutionWidth'] ?? null,
             'height' => $metadata['height'] ?? $metadata['resolutionHeight'] ?? null,
             'duration' => $metadata['duration'] ?? null,

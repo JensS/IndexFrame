@@ -104,6 +104,9 @@ class AppServiceProvider extends ServiceProvider
             'authType' => Client::AUTH_BASIC,
         ]);
 
+        $client->addCurlSetting(CURLOPT_CONNECTTIMEOUT, 10);
+        $client->addCurlSetting(CURLOPT_TIMEOUT, 20);
+
         if (! config('eagle.webdav.verify_tls')) {
             $client->addCurlSetting(CURLOPT_SSL_VERIFYHOST, 0);
             $client->addCurlSetting(CURLOPT_SSL_VERIFYPEER, false);

@@ -1,6 +1,7 @@
 .git
 .github
 .env*
+!.env.netcup.example
 .opencloud
 node_modules
 vendor
@@ -9,12 +10,14 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 database/database.sqlite
+database/*.sqlite*
+storage
+dist
 *.library/
+!tests/Fixtures/netcup-webdav/*.library/
 *.eaglepack
-tests
 .phpunit.cache
 .phpunit.result.cache
-phpunit.xml
 README.md
 CHANGELOG.md
 CONTRIBUTING.md

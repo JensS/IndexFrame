@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\DiscoverEagleLibraries;
 use App\Models\EagleLibrary;
 use App\Services\EagleLibraryDiscovery;
 use App\Services\EagleLibraryIndexer;
@@ -10,12 +11,21 @@ use Illuminate\Support\Facades\Cache;
 
 class SyncEagleLibrariesCommand extends Command
 {
-    protected $signature = 'eagle:sync {--prune : Remove indexed records whose Eagle item directory is gone}';
+    protected $signature = 'eagle:sync
+        {--prune : Remove indexed records whose Eagle item directory is gone}
+        {--queued : Queue resumable batches for a short-lived database worker}';
 
     protected $description = 'Discover and index configured Eagle libraries';
 
     public function handle(EagleLibraryDiscovery $discovery, EagleLibraryIndexer $indexer): int
     {
+        if ($this->option('queued')) {
+            DiscoverEagleLibraries::dispatch((bool) $this->option('prune'));
+            $this->components->info('Library sync queued. The next scheduled queue drain will process it.');
+
+            return self::SUCCESS;
+        }
+
         $lock = Cache::lock('eagle-library-sync', 7200);
 
         if (! $lock->get()) {

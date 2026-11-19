@@ -7,6 +7,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -91,7 +92,13 @@ class EagleImageDerivative
         $previewMaximum = (int) config('eagle.derivatives.preview_source_maximum_width');
 
         if ($width <= $previewMaximum || $asset->media_type !== 'image') {
-            return $this->locator->preview($asset);
+            $source = $this->locator->preview($asset);
+
+            if ($asset->media_type !== 'image' && ! filled($asset->thumbnail_file_name)) {
+                throw new NotFoundHttpException('This asset has no preview image in OpenCloud.');
+            }
+
+            return $source;
         }
 
         try {
@@ -212,9 +219,7 @@ class EagleImageDerivative
             throw new RuntimeException('This asset cannot be converted into an optimized browser image.');
         }
 
-        $pixels = $details[0] * $details[1];
-
-        if ($pixels > (int) config('eagle.derivatives.gd_maximum_pixels')) {
+        if (! EagleImageMemory::canDecode($sourcePath)) {
             throw new RuntimeException('This image is too large for the configured derivative processor.');
         }
 

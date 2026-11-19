@@ -21,6 +21,8 @@ class LibrariesController extends Controller
                 'assets_count' => $library->assets_count,
                 'indexed_at' => $library->indexed_at?->toIso8601String(),
                 'writes_enabled' => (bool) config('eagle.writes_enabled'),
+                'upload_max_kilobytes' => (int) config('eagle.upload_max_kilobytes'),
+                'upload_request_max_kilobytes' => (int) config('eagle.upload_request_max_kilobytes'),
             ]);
 
         return response()->json(['data' => $libraries]);

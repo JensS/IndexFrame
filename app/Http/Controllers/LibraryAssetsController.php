@@ -132,6 +132,13 @@ class LibraryAssetsController extends Controller
             ],
         ]);
 
+        $totalBytes = array_sum(array_map(fn ($file): int => $file->getSize(), $validated['files']));
+        abort_if(
+            $totalBytes > config('eagle.upload_request_max_kilobytes') * 1024,
+            413,
+            'These files exceed the upload limit. Add fewer files at a time or use the OpenCloud client.',
+        );
+
         $assets = collect($validated['files'])->map(function ($file) use (
             $assetData,
             $indexer,

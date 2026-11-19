@@ -11,6 +11,9 @@ jobs:
     application:
         runs-on: ubuntu-latest
         timeout-minutes: 20
+        strategy:
+            matrix:
+                php: ['8.4', '8.5']
 
         steps:
             - name: Check out repository
@@ -19,7 +22,7 @@ jobs:
             - name: Set up PHP
               uses: shivammathur/setup-php@v2
               with:
-                  php-version: '8.4'
+                  php-version: ${{ matrix.php }}
                   coverage: none
                   extensions: curl, gd, pdo_sqlite, sqlite3
 
@@ -60,3 +63,34 @@ jobs:
 
             - name: Build production image
               run: docker build --tag indexframe:test .
+
+    netcup:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v5
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.4'
+                  coverage: none
+            - name: Set up local simulation secrets
+              run: |
+                  php -r 'file_put_contents(".env.netcup.local", "NETCUP_LOCAL_APP_KEY=".chr(39)."base64:".base64_encode(random_bytes(32)).chr(39)."\nNETCUP_LOCAL_PASSWORD_HASH=".chr(39).password_hash("netcup-local-test", PASSWORD_BCRYPT).chr(39)."\n");'
+            - name: Build netcup simulation
+              run: docker compose --env-file .env.netcup.local -f compose.netcup.yaml build web cli tests webdav
+            - name: Start MySQL 8.4 and Apache
+              run: docker compose --env-file .env.netcup.local -f compose.netcup.yaml up -d --wait mysql webdav web
+            - name: Test with MySQL 8.4
+              run: docker compose --env-file .env.netcup.local -f compose.netcup.yaml run --rm tests
+            - name: Migrate and index the WebDAV fixture
+              run: |
+                  docker compose --env-file .env.netcup.local -f compose.netcup.yaml run --rm cli artisan migrate --force
+                  docker compose --env-file .env.netcup.local -f compose.netcup.yaml run --rm cli artisan eagle:sync --queued --prune
+                  docker compose --env-file .env.netcup.local -f compose.netcup.yaml run --rm cli artisan schedule:run
+                  curl --fail http://localhost:8085/up
+                  curl --fail http://localhost:8085/login
+            - name: Test Apache, sessions and media over HTTP
+              run: docker compose --env-file .env.netcup.local -f compose.netcup.yaml run --rm tests php tests/netcup-smoke.php
+            - name: Stop simulation
+              if: always()
+              run: docker compose --env-file .env.netcup.local -f compose.netcup.yaml down

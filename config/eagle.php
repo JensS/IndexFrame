@@ -22,7 +22,13 @@ return [
         'path' => env('EAGLE_WRITE_BACKUPS_PATH', storage_path('app/private/eagle-write-backups')),
     ],
 
-    'upload_max_kilobytes' => (int) env('EAGLE_UPLOAD_MAX_KILOBYTES', 512000),
+    'upload_max_kilobytes' => (int) env('EAGLE_UPLOAD_MAX_KILOBYTES', 122880),
+
+    'upload_request_max_kilobytes' => (int) env('EAGLE_UPLOAD_REQUEST_MAX_KILOBYTES', 122880),
+
+    'queued_sync' => filter_var(env('EAGLE_QUEUED_SYNC', true), FILTER_VALIDATE_BOOL),
+
+    'sync_batch_size' => max(1, min(25, (int) env('EAGLE_SYNC_BATCH_SIZE', 5))),
 
     'ffmpeg_path' => env('EAGLE_FFMPEG_PATH', '/usr/bin/ffmpeg'),
     'ffprobe_path' => env('EAGLE_FFPROBE_PATH', '/usr/bin/ffprobe'),
@@ -34,6 +40,6 @@ return [
         'preview_source_maximum_width' => 640,
         'webp_quality' => (int) env('EAGLE_DERIVATIVE_WEBP_QUALITY', 78),
         'timeout' => (int) env('EAGLE_DERIVATIVE_TIMEOUT', 90),
-        'gd_maximum_pixels' => (int) env('EAGLE_DERIVATIVE_GD_MAXIMUM_PIXELS', 80000000),
+        'gd_maximum_pixels' => (int) env('EAGLE_DERIVATIVE_GD_MAXIMUM_PIXELS', 20000000),
     ],
 ];
