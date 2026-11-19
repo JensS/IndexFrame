@@ -10,6 +10,7 @@ use App\Services\EagleStorage;
 use App\Services\OpenCloudDirectoryBrowser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Mockery;
@@ -108,6 +109,56 @@ class LibraryApiTest extends TestCase
         $this->getJson("/api/libraries/{$library->slug}/assets?smart=SMART00000001")
             ->assertOk()
             ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_it_rejects_an_upload_batch_over_the_request_limit_before_writing(): void
+    {
+        config()->set('eagle.upload_request_max_kilobytes', 1);
+        $library = EagleLibrary::query()->firstOrFail();
+
+        $this->postJson("/api/libraries/{$library->slug}/assets", [
+            'files' => [UploadedFile::fake()->image('first.png')->size(1), UploadedFile::fake()->image('second.png')->size(1)],
+        ])->assertStatus(413);
+
+        $this->assertSame(1, $library->assets()->count());
+    }
+
+    public function test_it_rejects_a_file_over_the_individual_upload_limit(): void
+    {
+        config()->set('eagle.upload_max_kilobytes', 1);
+        $library = EagleLibrary::query()->firstOrFail();
+
+        $this->postJson("/api/libraries/{$library->slug}/assets", [
+            'files' => [UploadedFile::fake()->image('large.png')->size(2)],
+        ])->assertUnprocessable()->assertJsonValidationErrors('files.0');
+
+        $this->assertSame(1, $library->assets()->count());
+    }
+
+    public function test_cached_tags_remain_arrays_on_subsequent_database_cache_reads(): void
+    {
+        config()->set('cache.default', 'database');
+        $library = EagleLibrary::query()->firstOrFail();
+        $url = "/api/libraries/{$library->slug}/folders";
+
+        $this->getJson($url)->assertOk()->assertJsonPath('data.tags.0.name', 'portrait');
+        $this->getJson($url)->assertOk()->assertJsonPath('data.tags.0.name', 'portrait');
+
+        Cache::put("eagle-library.{$library->id}.tags", collect([['name' => 'legacy', 'count' => 1]]), 600);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.tags.0.name', 'portrait');
+    }
+
+    public function test_a_video_without_a_poster_does_not_download_the_original_for_a_preview(): void
+    {
+        $library = EagleLibrary::query()->firstOrFail();
+        $asset = $library->assets()->firstOrFail();
+        $asset->update(['media_type' => 'video', 'extension' => 'mov', 'file_name' => 'large.mov', 'thumbnail_file_name' => null]);
+        $storage = Mockery::mock(EagleStorage::class);
+        $storage->shouldReceive('fileExists')->with("{$library->path}/images/{$asset->eagle_id}.info/large.mov")->once()->andReturnTrue();
+        $storage->shouldNotReceive('readStream');
+        $this->app->instance(EagleStorage::class, $storage);
+
+        $this->get("/media/{$library->slug}/{$asset->eagle_id}/image/640")->assertNotFound();
     }
 
     public function test_remote_library_scanning_runs_outside_a_database_transaction(): void
@@ -368,6 +419,78 @@ class LibraryApiTest extends TestCase
             ->assertHeader('Content-Type', 'image/jpeg');
 
         $this->assertSame('image-contents', $response->streamedContent());
+    }
+
+    public function test_public_share_links_allow_guests_to_view_and_download_one_asset(): void
+    {
+        $library = EagleLibrary::query()->firstOrFail();
+        $shareEndpoint = "/api/libraries/{$library->slug}/assets/ABCDEFGHIJKLM/share";
+        $privateFile = "/media/{$library->slug}/ABCDEFGHIJKLM/original";
+
+        $this->withSession(['eagle_authenticated' => false])->postJson($shareEndpoint)->assertUnauthorized();
+        $this->get($privateFile)->assertRedirect('/login');
+
+        config()->set('eagle.writes_enabled', false);
+        $this->withSession(['eagle_authenticated' => true]);
+        $url = $this->postJson($shareEndpoint)->assertOk()->json('url');
+        $this->assertMatchesRegularExpression('~/share/[0-9a-f]{64}$~', $url);
+        $this->postJson($shareEndpoint)->assertOk()->assertJsonPath('url', $url);
+        $this->getJson("/api/libraries/{$library->slug}/assets")
+            ->assertOk()
+            ->assertJsonMissingPath('data.0.share_token');
+
+        $this->withSession(['eagle_authenticated' => false]);
+        $this->get($url)
+            ->assertOk()
+            ->assertSee('Studio portrait')
+            ->assertDontSee('Blue studio setup')
+            ->assertHeader('Referrer-Policy', 'no-referrer')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+
+        $preview = $this->get("{$url}/preview")->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->assertSame('image-contents', $preview->streamedContent());
+
+        $download = $this->get("{$url}/download")
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/octet-stream')
+            ->assertDownload('portrait.jpg');
+        $this->assertSame('image-contents', $download->streamedContent());
+        $this->get($privateFile)->assertRedirect('/login');
+    }
+
+    public function test_share_links_are_scoped_to_the_requested_library(): void
+    {
+        $library = EagleLibrary::query()->firstOrFail();
+        $otherLibrary = $library->replicate()->fill(['slug' => 'other', 'path' => 'Other.library']);
+        $otherLibrary->save();
+        $shareEndpoint = "/api/libraries/{$otherLibrary->slug}/assets/ABCDEFGHIJKLM/share";
+
+        $this->postJson($shareEndpoint)->assertNotFound();
+        $asset = $library->assets()->firstOrFail()->replicate()->fill(['name' => 'Other portrait']);
+        $otherLibrary->assets()->save($asset);
+
+        $url = $this->postJson($shareEndpoint)->assertOk()->json('url');
+        $this->withSession(['eagle_authenticated' => false])->get($url)
+            ->assertOk()
+            ->assertSee('Other portrait')
+            ->assertDontSee('Studio portrait');
+    }
+
+    public function test_share_links_reject_unknown_tokens_and_trashed_assets(): void
+    {
+        $library = EagleLibrary::query()->firstOrFail();
+        $shareEndpoint = "/api/libraries/{$library->slug}/assets/ABCDEFGHIJKLM/share";
+        $unknownUrl = '/share/'.str_repeat('0', 64);
+        $url = $this->postJson($shareEndpoint)->assertOk()->json('url');
+
+        $library->assets()->firstOrFail()->update(['is_deleted' => true]);
+        $this->postJson($shareEndpoint)->assertNotFound();
+
+        $this->withSession(['eagle_authenticated' => false]);
+        $this->get($unknownUrl)->assertNotFound();
+        $this->get($url)->assertNotFound();
+        $this->get("{$url}/preview")->assertNotFound();
+        $this->get("{$url}/download")->assertNotFound();
     }
 
     public function test_it_repairs_an_unusual_eagle_filename_when_the_asset_is_first_opened(): void

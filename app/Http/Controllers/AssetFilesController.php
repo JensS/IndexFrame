@@ -88,6 +88,32 @@ class AssetFilesController extends Controller
         );
     }
 
+    public function sharedPreview(EagleAsset $asset, EagleAssetLocator $locator, Request $request): StreamedResponse
+    {
+        abort_if($asset->is_deleted || $asset->sharePreviewType() === null, 404);
+
+        return $this->stream(
+            $locator->original($asset),
+            $asset->mime_type,
+            'private, no-store',
+            $request,
+            sandboxSvg: $asset->mime_type === 'image/svg+xml',
+        );
+    }
+
+    public function sharedDownload(EagleAsset $asset, EagleAssetLocator $locator, Request $request): StreamedResponse
+    {
+        abort_if($asset->is_deleted, 404);
+
+        return $this->stream(
+            $locator->original($asset),
+            'application/octet-stream',
+            'private, no-store',
+            $request,
+            downloadName: $asset->file_name,
+        );
+    }
+
     private function stream(
         string $path,
         string $mimeType,
@@ -118,7 +144,7 @@ class AssetFilesController extends Controller
         }
 
         if ($downloadName) {
-            $fallbackName = preg_replace('/[^\x20-\x7E]/', '_', $downloadName) ?: 'download';
+            $fallbackName = preg_replace('/[^\x20-\x7E]|%/', '_', $downloadName) ?: 'download';
             $headers['Content-Disposition'] = HeaderUtils::makeDisposition('attachment', $downloadName, $fallbackName);
         }
 

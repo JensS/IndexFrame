@@ -11,6 +11,8 @@ class EagleAsset extends Model
 {
     protected $guarded = [];
 
+    protected $hidden = ['share_token'];
+
     protected function casts(): array
     {
         return [
@@ -34,5 +36,14 @@ class EagleAsset extends Model
     public function scopeVisible(Builder $query): Builder
     {
         return $query->where('is_deleted', false);
+    }
+
+    public function sharePreviewType(): ?string
+    {
+        return match ($this->mime_type) {
+            'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml' => 'image',
+            'video/mp4', 'video/webm' => 'video',
+            default => null,
+        };
     }
 }

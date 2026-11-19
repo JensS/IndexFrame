@@ -11,11 +11,17 @@ class AddSecurityHeaders
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
+        $shared = $request->is('share/*');
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        $response->headers->set('Referrer-Policy', $shared ? 'no-referrer' : 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+        if ($shared) {
+            $response->headers->set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+            $response->headers->set('Cache-Control', 'private, no-store');
+        }
 
         if (app()->isProduction() && ! $response->headers->has('Content-Security-Policy')) {
             $response->headers->set(

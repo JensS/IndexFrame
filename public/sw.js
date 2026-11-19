@@ -59,7 +59,7 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    if (request.mode === 'navigate') {
+    if (request.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/login')) {
         event.respondWith(navigationResponse(request));
 
         return;

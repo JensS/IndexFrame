@@ -1,5 +1,6 @@
-@import url('https://fonts.bunny.net/css?family=dm-sans:400,500,600,700|manrope:500,600,700');
+@import './native.css';
 
+@layer legacy {
 :root {
     --ink: #20201d;
     --muted: #85847e;
@@ -695,200 +696,6 @@ a:focus-visible {
     text-transform: uppercase;
 }
 
-.asset-viewer-backdrop {
-    align-items: center;
-    backdrop-filter: blur(18px);
-    background: rgba(17, 17, 15, 0.84);
-    display: flex;
-    inset: 0;
-    justify-content: center;
-    padding: 22px;
-    position: fixed;
-    z-index: 110;
-}
-
-.asset-viewer {
-    background: #171715;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 13px;
-    box-shadow: 0 36px 110px rgba(0, 0, 0, 0.55);
-    color: white;
-    display: flex;
-    flex-direction: column;
-    height: min(900px, calc(100vh - 44px));
-    max-width: 1440px;
-    overflow: hidden;
-    position: relative;
-    width: min(1240px, calc(100vw - 44px));
-}
-
-.asset-viewer-header {
-    align-items: center;
-    display: flex;
-    flex: 0 0 auto;
-    gap: 18px;
-    justify-content: space-between;
-    min-height: 58px;
-    padding: 9px 11px 9px 17px;
-}
-
-.asset-viewer-header > div {
-    min-width: 0;
-}
-
-.asset-viewer-header strong,
-.asset-viewer-header span {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.asset-viewer-header strong {
-    font: 600 12px 'Manrope', sans-serif;
-}
-
-.asset-viewer-header span {
-    color: rgba(255, 255, 255, 0.52);
-    font-size: 9px;
-    margin-top: 3px;
-    text-transform: uppercase;
-}
-
-.asset-viewer-header button,
-.asset-viewer-navigation {
-    align-items: center;
-    background: rgba(255, 255, 255, 0.1);
-    border: 0;
-    border-radius: 99px;
-    color: white;
-    display: flex;
-    justify-content: center;
-}
-
-.asset-viewer-header button {
-    flex: 0 0 36px;
-    height: 36px;
-}
-
-.asset-viewer-media {
-    align-items: center;
-    background:
-        linear-gradient(45deg, rgba(255, 255, 255, 0.02) 25%, transparent 25%),
-        linear-gradient(-45deg, rgba(255, 255, 255, 0.02) 25%, transparent 25%),
-        #0e0e0d;
-    background-position: 0 0, 12px 12px;
-    background-size: 24px 24px;
-    display: flex;
-    flex: 1;
-    justify-content: center;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.asset-viewer-media img,
-.asset-viewer-media video {
-    height: 100%;
-    object-fit: contain;
-    width: 100%;
-}
-
-.offline-video-poster {
-    height: 100%;
-    position: relative;
-    width: 100%;
-}
-
-.offline-video-poster p {
-    backdrop-filter: blur(12px);
-    background: rgba(18, 18, 16, 0.78);
-    border-radius: 99px;
-    bottom: 18px;
-    color: rgba(255, 255, 255, 0.78);
-    font-size: 10px;
-    left: 50%;
-    margin: 0;
-    max-width: calc(100% - 40px);
-    padding: 8px 12px;
-    position: absolute;
-    text-align: center;
-    transform: translateX(-50%);
-}
-
-.asset-viewer-navigation {
-    height: 44px;
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 44px;
-}
-
-.asset-viewer-navigation:hover,
-.asset-viewer-header button:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.asset-viewer-navigation:disabled {
-    opacity: 0;
-    pointer-events: none;
-}
-
-.asset-viewer-navigation.previous {
-    left: 14px;
-}
-
-.asset-viewer-navigation.next {
-    right: 14px;
-}
-
-.asset-viewer-toolbar {
-    align-items: center;
-    display: grid;
-    flex: 0 0 auto;
-    gap: 5px 14px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 64px;
-    padding: 9px 14px;
-}
-
-.asset-viewer-toolbar > div {
-    display: flex;
-    gap: 8px;
-}
-
-.asset-viewer-toolbar button,
-.asset-viewer-toolbar a {
-    align-items: center;
-    background: rgba(255, 255, 255, 0.11);
-    border: 0;
-    border-radius: 7px;
-    color: white;
-    display: flex;
-    font-size: 11px;
-    font-weight: 600;
-    gap: 7px;
-    padding: 9px 11px;
-    text-decoration: none;
-}
-
-.asset-viewer-toolbar button:hover,
-.asset-viewer-toolbar a:hover {
-    background: rgba(255, 255, 255, 0.19);
-}
-
-.asset-viewer-toolbar > span {
-    color: rgba(255, 255, 255, 0.38);
-    font-size: 9px;
-    text-align: right;
-}
-
-.asset-viewer-toolbar > p {
-    color: #ef9c7e;
-    font-size: 10px;
-    grid-column: 1 / -1;
-    margin: 0;
-}
-
 .drop-overlay {
     align-items: center;
     backdrop-filter: blur(9px);
@@ -930,8 +737,7 @@ a:focus-visible {
     margin: 0;
 }
 
-.asset-type,
-.asset-duration {
+.asset-type {
     backdrop-filter: blur(8px);
     background: rgba(28, 28, 26, 0.73);
     border-radius: 4px;
@@ -942,16 +748,7 @@ a:focus-visible {
     padding: 3px 5px;
     position: absolute;
     top: 6px;
-}
-
-.asset-type {
     left: 6px;
-}
-
-.asset-duration {
-    bottom: 6px;
-    right: 6px;
-    top: auto;
 }
 
 .asset-fallback {
@@ -1824,37 +1621,6 @@ a:focus-visible {
         padding: 32px 24px;
     }
 
-    .asset-viewer-backdrop {
-        padding: 0;
-    }
-
-    .asset-viewer {
-        border: 0;
-        border-radius: 0;
-        height: 100vh;
-        width: 100vw;
-    }
-
-    .asset-viewer-toolbar {
-        display: flex;
-        flex-direction: column;
-        padding: 10px;
-    }
-
-    .asset-viewer-toolbar > div {
-        width: 100%;
-    }
-
-    .asset-viewer-toolbar button,
-    .asset-viewer-toolbar a {
-        flex: 1;
-        justify-content: center;
-    }
-
-    .asset-viewer-toolbar > span {
-        display: none;
-    }
-
     .storage-browser-backdrop {
         padding: 0;
     }
@@ -1896,4 +1662,6 @@ a:focus-visible {
     .quick-look {
         display: none;
     }
+}
+
 }
