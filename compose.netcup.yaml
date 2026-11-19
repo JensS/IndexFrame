@@ -99,7 +99,11 @@ services:
             - mysql:/var/lib/mysql
             - ./docker/netcup/mysql-init.sql:/docker-entrypoint-initdb.d/indexframe.sql:ro
         healthcheck:
-            test: [CMD-SHELL, 'mysqladmin ping -h localhost -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent']
+            test:
+                - CMD-SHELL
+                - >-
+                    mysql --protocol=TCP -h 127.0.0.1 -u "$$MYSQL_USER" -p"$$MYSQL_PASSWORD"
+                    --database="$$MYSQL_DATABASE" --execute='SELECT 1' --batch --skip-column-names
             interval: 5s
             timeout: 5s
             retries: 30
